@@ -20,20 +20,20 @@ def load_knowledge_base(csv_path):
 
 stopword= stopwords.words('english')
 def remove_stopwords(text):
-    new_text= []
+    new_text=[]
     for word in text.split():
         if word in stopword:
             new_text.append('')
         else:
             new_text.append(word)
-    x = new_text[:]
+    x=new_text[:]
     new_text.clear()
     return " ".join(x)
 
 def preprocess(text):   #Lowercase ,misspellings, remove stopwords and tokenise 
     text=text.lower()
     text=remove_stopwords(text)
-    text = str(TextBlob(text).correct())
+    text=str(TextBlob(text).correct())
     text=re.sub(r"[^a-z\s]", " ", text)
     return text.split()
 
@@ -42,8 +42,8 @@ def extract_symptoms(user_text, all_symptoms):
     user_phrase=" ".join(words)
     matched= set()
     for sym in all_symptoms:
-        readable = sym.replace("_", " ")
-        parts = readable.split()
+        readable=sym.replace("_", " ")
+        parts=readable.split()
         if readable in user_phrase or set(parts).issubset(words):            
             matched.add(sym)
     return list(matched)
