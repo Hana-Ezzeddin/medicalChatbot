@@ -131,7 +131,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aether · Medical AI</title>
+<title>Anti · Medical AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Figtree:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -469,7 +469,7 @@ header {
   <header>
     <div class="hlogo">&#198;</div>
     <div class="hinfo">
-      <h1>Aether Medical</h1>
+      <h1>Anti Medical</h1>
       <p>Symptom Analysis &amp; Differential Diagnosis</p>
     </div>
     <div class="hright">
