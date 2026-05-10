@@ -53,7 +53,7 @@ def process_sym(sym):
     return s
 
 def main():
-    csv_path= r"D:\cogProj\Medical Diagnosis Expert System.csv"
+    csv_path= "Medical Diagnosis Expert System.csv"
     kb=load_knowledge_base(csv_path)
     
     all_symptoms= set()

@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, render_template_string
 import pandas as pd
 import re
-import random
 
 app = Flask(__name__)
 
@@ -55,7 +54,6 @@ def diagnose(matched, denied):
         common = set(matched).intersection(disease_syms)
         if common:
             confidence = len(common) / len(disease_syms)
-                
             scores.append({
                 "disease": disease,
                 "confidence": confidence,
@@ -108,14 +106,16 @@ def chat():
     data = request.json
     message = data.get("message", "")
     matched = data.get("matched", [])
-    denied  = data.get("denied", [])
+    denied  = data.get("denied", [])   # ← already includes newDenied from frontend
     choice  = data.get("choice")
 
     if message:
         matched = extract_symptoms(message)
         denied  = []
     elif choice:
-        matched.append(choice)
+        if choice not in matched:
+            matched.append(choice)
+        # denied already arrives updated from the frontend (includes unchosen options)
 
     if not matched:
         return jsonify({"response": {"type": "no_symptoms"}, "matched": [], "denied": [], "detected": []})
@@ -162,10 +162,8 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 
-/* ─── Background particles canvas ─── */
 #bg { position:fixed; inset:0; z-index:0; pointer-events:none; }
 
-/* ─── Ambient orbs ─── */
 .orb { position:fixed; border-radius:50%; filter:blur(110px); pointer-events:none; z-index:0; }
 .o1 { width:650px; height:650px; top:-18%; left:-12%;
       background:radial-gradient(circle,rgba(0,232,204,0.11),transparent 70%);
@@ -181,14 +179,12 @@ body {
 @keyframes od2{0%,100%{transform:translate(0,0) scale(1)}35%{transform:translate(-65px,-45px) scale(1.1)}65%{transform:translate(38px,65px) scale(0.9)}}
 @keyframes od3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(45px,-38px) scale(1.14)}}
 
-/* ─── Shell ─── */
 .shell {
   position:relative; z-index:2;
   width:min(820px,100vw); height:100vh;
   display:flex; flex-direction:column;
 }
 
-/* ─── Header ─── */
 header {
   flex-shrink:0;
   display:flex; align-items:center; gap:14px;
@@ -226,7 +222,6 @@ header {
 .hsdot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:sdot 2s ease-in-out infinite; }
 @keyframes sdot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.3;transform:scale(0.6)}}
 
-/* ─── Feed ─── */
 #feed {
   flex:1; overflow-y:auto; padding:36px 32px 20px;
   display:flex; flex-direction:column; gap:22px;
@@ -236,7 +231,6 @@ header {
 #feed::-webkit-scrollbar-track{background:transparent;}
 #feed::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px;}
 
-/* ─── Welcome ─── */
 #welcome {
   flex:1; display:flex; flex-direction:column;
   align-items:center; justify-content:center;
@@ -267,7 +261,6 @@ header {
 }
 .chip:hover { border-color:rgba(0,232,204,.35); color:var(--cyan); background:rgba(0,232,204,.06); transform:translateY(-1px); }
 
-/* ─── Messages ─── */
 .msg { display:flex; gap:12px; align-items:flex-start; animation:msgin .45s cubic-bezier(.34,1.56,.64,1) both; }
 .msg.user { flex-direction:row-reverse; }
 @keyframes msgin{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
@@ -312,7 +305,6 @@ header {
 }
 @keyframes cblink{0%,100%{opacity:1}50%{opacity:0}}
 
-/* Symptom tags */
 .taglabel { font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-family:'Space Mono',monospace; display:block; margin-bottom:7px; }
 .tags { display:flex; flex-wrap:wrap; gap:6px; }
 .tag {
@@ -322,7 +314,6 @@ header {
 }
 @keyframes tagpop{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
 
-/* Options */
 .optq { font-size:.85rem; color:var(--txt); margin-bottom:12px; line-height:1.6; }
 .opts { display:flex; flex-wrap:wrap; gap:8px; }
 .opt {
@@ -334,10 +325,8 @@ header {
 .opt.chosen { border-color:var(--cyan); color:var(--cyan); background:rgba(0,232,204,.08); }
 .opt:disabled { cursor:default; opacity:.4; transform:none; }
 
-/* No match */
 .nomatch { display:flex; align-items:flex-start; gap:10px; background:rgba(249,168,37,.06); border:1px solid rgba(249,168,37,.2); border-radius:14px; padding:13px 16px; font-size:.85rem; color:var(--amber); line-height:1.6; }
 
-/* ─── Typing ─── */
 .trow { display:flex; gap:12px; align-items:flex-start; animation:msgin .3s ease both; }
 .tbub {
   background:var(--g); backdrop-filter:blur(12px);
@@ -352,7 +341,6 @@ header {
 .td:nth-child(3){background:var(--violet);animation-delay:.36s;}
 @keyframes tdb{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-7px);opacity:1}}
 
-/* ─── Diagnosis Card ─── */
 .douter { width:100%; animation:drise .65s cubic-bezier(.22,.68,0,1.25) both; }
 @keyframes drise{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 
@@ -416,7 +404,6 @@ header {
 .dfoot { padding:12px 30px; border-top:1px solid var(--b); font-size:.7rem; color:var(--muted); font-style:italic; display:flex; align-items:center; gap:8px; }
 .dfdot { width:3px; height:3px; border-radius:50%; background:var(--muted); }
 
-/* ─── Input dock ─── */
 .dock { flex-shrink:0; padding:14px 32px 26px; }
 .ishell {
   display:flex; align-items:flex-end; gap:10px;
@@ -565,23 +552,6 @@ function showTyping(){
 }
 function hideTyping(){document.getElementById('typing')?.remove();}
 
-/* ── Streaming text bubble ── */
-async function streamBubble(text,speed=11){
-  const wrap=document.createElement('div');
-  wrap.className='msg ai';
-  const av=document.createElement('div'); av.className='av ai'; av.textContent='\u00C6'; wrap.appendChild(av);
-  const bub=document.createElement('div'); bub.className='bub'; wrap.appendChild(bub);
-  feed.appendChild(wrap);
-  let out='';
-  for(let i=0;i<text.length;i++){
-    out+=text[i];
-    bub.innerHTML=esc(out)+'<span class="cur"></span>';
-    if(i%4===0)scroll();
-    await delay(speed);
-  }
-  bub.textContent=text; scroll();
-}
-
 /* ── Instant AI HTML bubble ── */
 function addAI(html){
   const wrap=document.createElement('div'); wrap.className='msg ai';
@@ -600,12 +570,14 @@ async function render(resp,detected){
   if(resp.type==='no_symptoms'||resp.type==='no_match'){
     addAI(`<div class="nomatch">&#9888;&#xFE0F; &nbsp;Couldn't identify specific symptoms. Try something like: <em>"I have a fever, sore throat, and fatigue."</em></div>`);
   } else if(resp.type==='options'){
-    const btns=resp.options.map(o=>`<button class="opt" onclick="choose('${o}',this)">${o.replace(/_/g,' ')}</button>`).join('');
+    /* ── FIX: add data-sym to every button ── */
+    const btns=resp.options.map(o=>
+      `<button class="opt" data-sym="${o}" onclick="choose('${o}',this)">${o.replace(/_/g,' ')}</button>`
+    ).join('');
     addAI(`<div class="optq">${esc(resp.question)}</div><div class="opts">${btns}</div>`);
   } else if(resp.type==='result'){
     await delay(100);
     buildDiagCard(resp);
-    /* ✅ Auto-reset: next user message starts a fresh diagnosis */
     S={matched:[],denied:[]};
   }
   scroll(); setLoading(false);
@@ -663,7 +635,6 @@ function buildDiagCard(resp){
 
   feed.appendChild(outer); scroll();
 
-  /* Animate arc + counter */
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const arcEl=document.getElementById(id);
     const numEl=document.getElementById(id+'n');
@@ -694,13 +665,26 @@ async function sendMsg(){
 /* ── Choose option ── */
 async function choose(sym,btn){
   if(busy)return;
+
+  /* ── FIX: collect all shown options, mark unchosen as denied ── */
+  const allOpts=[...btn.closest('.opts').querySelectorAll('.opt')].map(b=>b.dataset.sym);
+  const newDenied=allOpts.filter(s=>s!==sym);
+
   btn.closest('.opts').querySelectorAll('.opt').forEach(b=>{b.disabled=true;});
   btn.classList.add('chosen');
   setLoading(true);
   addUser('Yes \u2014 '+sym.replace(/_/g,' '));
   await delay(320); showTyping();
   try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({choice:sym,matched:S.matched,denied:S.denied})});
+    const res=await fetch('/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        choice: sym,
+        matched: S.matched,
+        denied: [...S.denied, ...newDenied]   /* ── FIX: send updated denied ── */
+      })
+    });
     const data=await res.json();
     S={matched:data.matched,denied:data.denied};
     await delay(850);

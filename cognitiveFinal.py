@@ -125,12 +125,15 @@ class DiagnosisEngine(KnowledgeEngine):
                 print(f"Which of these symptoms do you have?\n" + "\n".join(f"  - {s.replace('_',' ')}" for s in rare_symptom))
                 print("Enter the ones you have separated by commas, or 'none'")
                 choice = [c.strip() for c in input().split(",")]
-                #choice = extract_symptoms(choice, rare_symptom) <-- this is needs the implemnted func in preprocessing
+                choice = extract_symptoms(choice, rare_symptom) # this is needs the implemnted func in preprocessing
                 for c in choice:
                     if c in rare_symptom:
                         matched.append(c)
                         
-                denied.extend([s for s in rare_symptom if s not in matched])
+                #denied.extend([s for s in rare_symptom if s not in matched])
+                for s in rare_symptom:
+                    if s not in matched:
+                        denied.append(s)
             else:
                 print(f"Do you have {rare_symptom[0].replace('_', ' ')}? (yes/no)")
                 if input().lower().strip() == "yes":
@@ -139,7 +142,7 @@ class DiagnosisEngine(KnowledgeEngine):
                    denied.append(rare_symptom[0])
 
             
-
+                  
             self.declare(SymptomFact(matched=matched, kb=kb, denied=denied))   #go back to rescore the diseases
         else:
             print("No more symptoms to ask about.")
