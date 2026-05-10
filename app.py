@@ -103,25 +103,42 @@ def home():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    data = request.json
+    data    = request.json
     message = data.get("message", "")
-    matched = data.get("matched", [])
-    denied  = data.get("denied", [])   # ← already includes newDenied from frontend
+    matched = data.get("matched", [])   # existing symptoms carried from frontend
+    denied  = data.get("denied",  [])   # already-asked symptoms carried from frontend
     choice  = data.get("choice")
+    accumulate = data.get("accumulate", False)  # merge vs. fresh-start flag
 
     if message:
-        matched = extract_symptoms(message)
-        denied  = []
+        new_syms = extract_symptoms(message)
+        if accumulate and matched:
+            # ── FIX 1: merge new symptoms with existing ones mid-session ──
+            matched = list(set(matched) | set(new_syms))
+        else:
+            # fresh start (first message, or post-result)
+            matched = new_syms
+            denied  = []
+
     elif choice:
+        # ── FIX 2: choice carries full matched+denied state from frontend ──
         if choice not in matched:
             matched.append(choice)
-        # denied already arrives updated from the frontend (includes unchosen options)
+        # denied already contains unchosen siblings (sent by frontend)
 
     if not matched:
-        return jsonify({"response": {"type": "no_symptoms"}, "matched": [], "denied": [], "detected": []})
+        return jsonify({
+            "response": {"type": "no_symptoms"},
+            "matched": [], "denied": [], "detected": []
+        })
 
     response = diagnose(matched, denied)
-    return jsonify({"response": response, "matched": matched, "denied": denied, "detected": matched})
+    return jsonify({
+        "response": response,
+        "matched":  matched,
+        "denied":   denied,
+        "detected": matched
+    })
 
 # =========================
 # FRONTEND
@@ -222,6 +239,30 @@ header {
 .hsdot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:sdot 2s ease-in-out infinite; }
 @keyframes sdot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.3;transform:scale(0.6)}}
 
+/* ── Symptom progress bar ── */
+#sympbar {
+  display:none; flex-shrink:0;
+  padding:8px 32px;
+  border-bottom:1px solid var(--b);
+  background:rgba(5,8,15,0.6);
+  backdrop-filter:blur(12px);
+}
+#sympbar.visible { display:flex; align-items:center; gap:10px; }
+.sympbar-label { font-family:'Space Mono',monospace; font-size:.62rem; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; white-space:nowrap; }
+.sympbar-tags  { display:flex; flex-wrap:wrap; gap:5px; flex:1; }
+.sympbar-tag   {
+  background:rgba(0,232,204,.08); border:1px solid rgba(0,232,204,.2);
+  color:var(--cyan); border-radius:99px; padding:2px 9px;
+  font-size:.7rem; animation:tagpop .3s cubic-bezier(.34,1.56,.64,1) both;
+}
+#sympbar-clear {
+  font-family:'Space Mono',monospace; font-size:.6rem; color:var(--muted);
+  background:none; border:1px solid var(--b); border-radius:6px;
+  padding:3px 8px; cursor:pointer; white-space:nowrap;
+  transition:border-color .2s,color .2s;
+}
+#sympbar-clear:hover { border-color:rgba(249,168,37,.4); color:var(--amber); }
+
 #feed {
   flex:1; overflow-y:auto; padding:36px 32px 20px;
   display:flex; flex-direction:column; gap:22px;
@@ -298,13 +339,6 @@ header {
   border-color:rgba(0,232,204,.18); border-top-right-radius:5px; color:#fff;
 }
 
-.cur {
-  display:inline-block; width:2px; height:.95em;
-  background:var(--cyan); vertical-align:text-bottom; margin-left:2px;
-  animation:cblink .9s step-end infinite;
-}
-@keyframes cblink{0%,100%{opacity:1}50%{opacity:0}}
-
 .taglabel { font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-family:'Space Mono',monospace; display:block; margin-bottom:7px; }
 .tags { display:flex; flex-wrap:wrap; gap:6px; }
 .tag {
@@ -313,6 +347,13 @@ header {
   font-size:.73rem; animation:tagpop .3s cubic-bezier(.34,1.56,.64,1) both;
 }
 @keyframes tagpop{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+
+/* ── merge notice ── */
+.merge-notice {
+  font-size:.75rem; color:var(--muted); margin-top:8px;
+  display:flex; align-items:center; gap:6px;
+}
+.merge-notice::before { content:''; width:14px; height:1px; background:var(--muted); display:inline-block; }
 
 .optq { font-size:.85rem; color:var(--txt); margin-bottom:12px; line-height:1.6; }
 .opts { display:flex; flex-wrap:wrap; gap:8px; }
@@ -323,7 +364,8 @@ header {
 }
 .opt:hover:not(:disabled) { border-color:rgba(0,232,204,.5); color:var(--cyan); background:rgba(0,232,204,.07); transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,232,204,.08); }
 .opt.chosen { border-color:var(--cyan); color:var(--cyan); background:rgba(0,232,204,.08); }
-.opt:disabled { cursor:default; opacity:.4; transform:none; }
+.opt.denied { border-color:rgba(255,255,255,.05); color:var(--muted); opacity:.4; }
+.opt:disabled { cursor:default; transform:none; }
 
 .nomatch { display:flex; align-items:flex-start; gap:10px; background:rgba(249,168,37,.06); border:1px solid rgba(249,168,37,.2); border-radius:14px; padding:13px 16px; font-size:.85rem; color:var(--amber); line-height:1.6; }
 
@@ -404,7 +446,16 @@ header {
 .dfoot { padding:12px 30px; border-top:1px solid var(--b); font-size:.7rem; color:var(--muted); font-style:italic; display:flex; align-items:center; gap:8px; }
 .dfdot { width:3px; height:3px; border-radius:50%; background:var(--muted); }
 
-.dock { flex-shrink:0; padding:14px 32px 26px; }
+/* ── hint pill above input when mid-session ── */
+.session-hint {
+  display:none; text-align:center;
+  font-size:.7rem; color:var(--cyan);
+  margin-bottom:6px; letter-spacing:.01em;
+  opacity:.7;
+}
+.session-hint.visible { display:block; }
+
+.dock { flex-shrink:0; padding:10px 32px 26px; }
 .ishell {
   display:flex; align-items:flex-end; gap:10px;
   background:rgba(255,255,255,.04); border:1px solid var(--b);
@@ -465,11 +516,18 @@ header {
     </div>
   </header>
 
+  <!-- Live symptom bar — visible once session starts -->
+  <div id="sympbar">
+    <span class="sympbar-label">Tracking</span>
+    <div class="sympbar-tags" id="sympbar-tags"></div>
+    <button id="sympbar-clear" onclick="clearSession()" title="Start over">&#10005; Clear</button>
+  </div>
+
   <div id="feed">
     <div id="welcome">
       <div class="wring">&#x1FA7A;</div>
       <h2>How are you feeling?</h2>
-      <p>Describe your symptoms in plain language. Aether will analyse them and generate a detailed diagnosis report.</p>
+      <p>Describe your symptoms in plain language. Anti will analyse them and generate a detailed diagnosis report.</p>
       <div class="chips">
         <span class="chip" onclick="useChip('I have fever, headache and body aches')">&#127777; Fever &amp; headache</span>
         <span class="chip" onclick="useChip('I have chest pain and shortness of breath')">&#128148; Chest pain</span>
@@ -481,6 +539,9 @@ header {
   </div>
 
   <div class="dock">
+    <div class="session-hint" id="session-hint">
+      &#x2295; You can keep describing more symptoms to refine the analysis
+    </div>
     <div class="ishell">
       <textarea id="msg" rows="1" placeholder="Describe your symptoms&#8230;" autocomplete="off"></textarea>
       <button class="sendbtn" id="sendbtn" onclick="sendMsg()">
@@ -500,7 +561,11 @@ header {
   let W,H,nodes=[];
   function resize(){W=c.width=innerWidth;H=c.height=innerHeight;}
   resize(); addEventListener('resize',resize);
-  for(let i=0;i<55;i++) nodes.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.22,vy:(Math.random()-.5)*.22,r:1+Math.random()*1.8,o:.2+Math.random()*.4});
+  for(let i=0;i<55;i++) nodes.push({
+    x:Math.random()*W, y:Math.random()*H,
+    vx:(Math.random()-.5)*.22, vy:(Math.random()-.5)*.22,
+    r:1+Math.random()*1.8, o:.2+Math.random()*.4
+  });
   function draw(){
     ctx.clearRect(0,0,W,H);
     nodes.forEach((n,i)=>{
@@ -510,7 +575,10 @@ header {
       ctx.fillStyle=`rgba(0,232,204,${n.o*.55})`; ctx.fill();
       for(let j=i+1;j<nodes.length;j++){
         const m=nodes[j],dx=m.x-n.x,dy=m.y-n.y,d=Math.sqrt(dx*dx+dy*dy);
-        if(d<130){ctx.beginPath();ctx.moveTo(n.x,n.y);ctx.lineTo(m.x,m.y);ctx.strokeStyle=`rgba(0,232,204,${(1-d/130)*.065})`;ctx.lineWidth=.7;ctx.stroke();}
+        if(d<130){
+          ctx.beginPath(); ctx.moveTo(n.x,n.y); ctx.lineTo(m.x,m.y);
+          ctx.strokeStyle=`rgba(0,232,204,${(1-d/130)*.065})`; ctx.lineWidth=.7; ctx.stroke();
+        }
       }
     });
     requestAnimationFrame(draw);
@@ -518,22 +586,60 @@ header {
   draw();
 })();
 
-/* ── State ── */
-let S={matched:[],denied:[]}, busy=false, uid=0;
-const feed=document.getElementById('feed');
-const msgEl=document.getElementById('msg');
-const sendBtn=document.getElementById('sendbtn');
+/* ══════════════════════════════
+   STATE
+   ══════════════════════════════ */
+let S = { matched: [], denied: [] };
+let busy         = false;
+let uid          = 0;
+/*
+  sessionActive:
+    false → next sendMsg() is a FRESH start (no prior symptoms)
+    true  → next sendMsg() MERGES with existing S.matched
+  Starts false. Set to true once options are returned.
+  Reset to false after a result card is shown OR clearSession() is called.
+*/
+let sessionActive = false;
+
+const feed    = document.getElementById('feed');
+const msgEl   = document.getElementById('msg');
+const sendBtn = document.getElementById('sendbtn');
 
 /* ── Textarea auto-resize ── */
-msgEl.addEventListener('input',()=>{msgEl.style.height='auto';msgEl.style.height=Math.min(msgEl.scrollHeight,130)+'px';});
-msgEl.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
+msgEl.addEventListener('input',()=>{
+  msgEl.style.height='auto';
+  msgEl.style.height=Math.min(msgEl.scrollHeight,130)+'px';
+});
+msgEl.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMsg(); }
+});
 
 /* ── Helpers ── */
-const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const delay=ms=>new Promise(r=>setTimeout(r,ms));
-const scroll=()=>{feed.scrollTop=feed.scrollHeight;};
-const setLoading=v=>{busy=v;sendBtn.disabled=v;};
-const hideWelcome=()=>document.getElementById('welcome')?.remove();
+const esc     = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const delay   = ms => new Promise(r=>setTimeout(r,ms));
+const scroll  = () => { feed.scrollTop = feed.scrollHeight; };
+const setLoad = v  => { busy = v; sendBtn.disabled = v; };
+const hideWelcome = () => document.getElementById('welcome')?.remove();
+
+/* ── Symptom bar ── */
+function updateSympBar(matched){
+  const bar   = document.getElementById('sympbar');
+  const inner = document.getElementById('sympbar-tags');
+  if(!matched||matched.length===0){ bar.classList.remove('visible'); return; }
+  bar.classList.add('visible');
+  inner.innerHTML = matched.map(s=>
+    `<span class="sympbar-tag">${s.replace(/_/g,' ')}</span>`
+  ).join('');
+}
+
+/* ── Clear / reset session ── */
+function clearSession(){
+  S = { matched:[], denied:[] };
+  sessionActive = false;
+  updateSympBar([]);
+  document.getElementById('session-hint').classList.remove('visible');
+  addAI(`<span style="color:var(--muted);font-size:.85rem;">Session cleared. Describe new symptoms whenever you're ready.</span>`);
+}
 
 /* ── User bubble ── */
 function addUser(text){
@@ -543,67 +649,92 @@ function addUser(text){
   feed.appendChild(el); scroll();
 }
 
-/* ── Typing ── */
+/* ── Typing indicator ── */
 function showTyping(){
   const el=document.createElement('div');
   el.id='typing'; el.className='trow';
   el.innerHTML=`<div class="av ai">&#198;</div><div class="tbub"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
   feed.appendChild(el); scroll();
 }
-function hideTyping(){document.getElementById('typing')?.remove();}
+function hideTyping(){ document.getElementById('typing')?.remove(); }
 
-/* ── Instant AI HTML bubble ── */
+/* ── AI HTML bubble ── */
 function addAI(html){
   const wrap=document.createElement('div'); wrap.className='msg ai';
   wrap.innerHTML=`<div class="av ai">&#198;</div><div class="bub">${html}</div>`;
   feed.appendChild(wrap); scroll();
 }
 
-/* ── Render response ── */
-async function render(resp,detected){
+/* ══════════════════════════════
+   RENDER RESPONSE
+   ══════════════════════════════ */
+async function render(resp, detected, wasMerge){
   hideTyping();
-  if(detected?.length&&resp.type!=='no_symptoms'){
-    const tags=detected.map(s=>`<span class="tag">${s.replace(/_/g,' ')}</span>`).join('');
-    addAI(`<span class="taglabel">Symptoms detected</span><div class="tags">${tags}</div>`);
+
+  /* Show detected/merged symptom tags */
+  if(detected?.length && resp.type!=='no_symptoms'){
+    const tags = detected.map(s=>`<span class="tag">${s.replace(/_/g,' ')}</span>`).join('');
+    const mergeNote = wasMerge
+      ? `<div class="merge-notice">Added to existing symptoms</div>`
+      : '';
+    addAI(`<span class="taglabel">Symptoms detected</span><div class="tags">${tags}</div>${mergeNote}`);
     await delay(200);
   }
-  if(resp.type==='no_symptoms'||resp.type==='no_match'){
-    addAI(`<div class="nomatch">&#9888;&#xFE0F; &nbsp;Couldn't identify specific symptoms. Try something like: <em>"I have a fever, sore throat, and fatigue."</em></div>`);
+
+  if(resp.type==='no_symptoms' || resp.type==='no_match'){
+    addAI(`<div class="nomatch">&#9888;&#xFE0F;&nbsp; Couldn't identify specific symptoms. Try something like: <em>"I have a fever, sore throat, and fatigue."</em></div>`);
+    /* Don't kill the session — let them retry */
+
   } else if(resp.type==='options'){
-    /* ── FIX: add data-sym to every button ── */
-    const btns=resp.options.map(o=>
+    /* ── Render follow-up option buttons ── */
+    const btns = resp.options.map(o=>
       `<button class="opt" data-sym="${o}" onclick="choose('${o}',this)">${o.replace(/_/g,' ')}</button>`
     ).join('');
     addAI(`<div class="optq">${esc(resp.question)}</div><div class="opts">${btns}</div>`);
+    /* Mid-session: type-in merges from now on */
+    sessionActive = true;
+    document.getElementById('session-hint').classList.add('visible');
+
   } else if(resp.type==='result'){
     await delay(100);
     buildDiagCard(resp);
-    S={matched:[],denied:[]};
+    /* ── After result: auto-reset so next message is a fresh case ── */
+    S = { matched:[], denied:[] };
+    sessionActive = false;
+    updateSympBar([]);
+    document.getElementById('session-hint').classList.remove('visible');
   }
-  scroll(); setLoading(false);
+
+  scroll();
+  setLoad(false);
 }
 
-/* ── Diagnosis card ── */
+/* ══════════════════════════════
+   DIAGNOSIS CARD
+   ══════════════════════════════ */
 function buildDiagCard(resp){
-  const top=resp.diseases[0], alts=resp.diseases.slice(1);
-  const id='a'+(++uid), circ=2*Math.PI*43;
+  const top  = resp.diseases[0];
+  const alts = resp.diseases.slice(1);
+  const id   = 'a'+(++uid);
+  const circ = 2*Math.PI*43; // r=43 → 270.2
 
-  const altRows=alts.map(d=>`
+  const altRows = alts.map(d=>`
     <div class="altitem">
       <div class="altname">${esc(d.name)}</div>
       <div class="alttrack"><div class="altfill" data-w="${d.confidence}"></div></div>
       <div class="altpct">${d.confidence}%</div>
     </div>`).join('');
 
-  const precs=resp.precautions.map((p,i)=>`
+  const precs = resp.precautions.map((p,i)=>`
     <div class="precitem" style="animation-delay:${i*.07}s">
       <span class="precn">0${i+1}</span><span>${esc(p)}</span>
     </div>`).join('');
 
-  const ts=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const ts = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 
-  const outer=document.createElement('div'); outer.className='douter';
-  outer.innerHTML=`
+  const outer = document.createElement('div');
+  outer.className = 'douter';
+  outer.innerHTML = `
     <div class="dcard">
       <div class="dstripe"></div>
       <div class="dtop">
@@ -619,12 +750,12 @@ function buildDiagCard(resp){
           </div>
         </div>
         <div class="dtopinfo">
-          <div class="dbadge">&#128302; &nbsp;Diagnosis Report</div>
+          <div class="dbadge">&#128302;&nbsp;Diagnosis Report</div>
           <div class="dname">${esc(top.name)}</div>
         </div>
       </div>
       <div class="dbody">
-        ${alts.length?`<div class="dseclabel">Other candidates</div>${altRows}<div class="dsep"></div>`:''}
+        ${alts.length ? `<div class="dseclabel">Other candidates</div>${altRows}<div class="dsep"></div>` : ''}
         <div class="dseclabel">Recommended precautions</div>
         <div class="preclist">${precs}</div>
       </div>
@@ -635,65 +766,121 @@ function buildDiagCard(resp){
 
   feed.appendChild(outer); scroll();
 
+  /* Animate arc + counter */
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    const arcEl=document.getElementById(id);
-    const numEl=document.getElementById(id+'n');
-    if(arcEl) arcEl.style.strokeDashoffset=circ*(1-top.confidence/100);
+    const arcEl = document.getElementById(id);
+    const numEl = document.getElementById(id+'n');
+    if(arcEl) arcEl.style.strokeDashoffset = circ*(1 - top.confidence/100);
     let cur=0; const tgt=top.confidence;
-    const step=()=>{ cur=Math.min(cur+1.4,tgt); if(numEl) numEl.textContent=Math.floor(cur)+'%'; if(cur<tgt)requestAnimationFrame(step); };
+    const step=()=>{
+      cur=Math.min(cur+1.4, tgt);
+      if(numEl) numEl.textContent=Math.floor(cur)+'%';
+      if(cur<tgt) requestAnimationFrame(step);
+    };
     setTimeout(step,380);
-    outer.querySelectorAll('.altfill').forEach(b=>{ if(b.dataset.w) b.style.width=b.dataset.w+'%'; });
+    outer.querySelectorAll('.altfill').forEach(b=>{
+      if(b.dataset.w) b.style.width=b.dataset.w+'%';
+    });
   }));
 }
 
-/* ── Send ── */
+/* ══════════════════════════════
+   SEND MESSAGE
+   ══════════════════════════════
+   Key logic:
+   - sessionActive=false  → fresh start (reset S before sending)
+   - sessionActive=true   → MERGE (send accumulate:true with existing S)
+   ══════════════════════════════ */
 async function sendMsg(){
-  if(busy)return;
-  const text=msgEl.value.trim(); if(!text)return;
-  hideWelcome(); setLoading(true);
+  if(busy) return;
+  const text = msgEl.value.trim();
+  if(!text) return;
+
+  hideWelcome();
+  setLoad(true);
   msgEl.value=''; msgEl.style.height='auto';
-  addUser(text); await delay(320); showTyping();
-  try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,matched:S.matched,denied:S.denied})});
-    const data=await res.json();
-    S={matched:data.matched,denied:data.denied};
-    await delay(750);
-    await render(data.response,data.detected);
-  }catch(e){hideTyping();setLoading(false);console.error(e);}
-}
+  addUser(text);
 
-/* ── Choose option ── */
-async function choose(sym,btn){
-  if(busy)return;
+  /* Decide whether to merge or start fresh */
+  const accumulate = sessionActive && S.matched.length > 0;
+  if(!accumulate){
+    /* Fresh start — wipe local state */
+    S = { matched:[], denied:[] };
+    sessionActive = false;
+  }
 
-  /* ── FIX: collect all shown options, mark unchosen as denied ── */
-  const allOpts=[...btn.closest('.opts').querySelectorAll('.opt')].map(b=>b.dataset.sym);
-  const newDenied=allOpts.filter(s=>s!==sym);
-
-  btn.closest('.opts').querySelectorAll('.opt').forEach(b=>{b.disabled=true;});
-  btn.classList.add('chosen');
-  setLoading(true);
-  addUser('Yes \u2014 '+sym.replace(/_/g,' '));
   await delay(320); showTyping();
+
   try{
-    const res=await fetch('/chat',{
+    const res = await fetch('/chat',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        choice: sym,
-        matched: S.matched,
-        denied: [...S.denied, ...newDenied]   /* ── FIX: send updated denied ── */
+      body: JSON.stringify({
+        message:     text,
+        matched:     S.matched,   // empty on fresh, existing on merge
+        denied:      S.denied,
+        accumulate:  accumulate   // ← tells backend to merge
       })
     });
-    const data=await res.json();
-    S={matched:data.matched,denied:data.denied};
+    const data = await res.json();
+    S = { matched: data.matched, denied: data.denied };
+    updateSympBar(S.matched);
+    await delay(750);
+    await render(data.response, data.detected, accumulate);
+  } catch(e){
+    hideTyping(); setLoad(false); console.error(e);
+  }
+}
+
+/* ══════════════════════════════
+   CHOOSE OPTION
+   ══════════════════════════════
+   Marks chosen button, collects all sibling
+   options as denied, sends full state to backend.
+   ══════════════════════════════ */
+async function choose(sym, btn){
+  if(busy) return;
+
+  const allBtns = [...btn.closest('.opts').querySelectorAll('.opt')];
+  const newDenied = allBtns.filter(b=>b.dataset.sym!==sym).map(b=>b.dataset.sym);
+
+  /* Visual feedback */
+  allBtns.forEach(b=>{
+    b.disabled = true;
+    if(b.dataset.sym===sym) b.classList.add('chosen');
+    else b.classList.add('denied');
+  });
+
+  setLoad(true);
+  addUser('Yes \u2014 '+sym.replace(/_/g,' '));
+  await delay(320); showTyping();
+
+  /* Build the definitive denied list (existing + siblings not chosen) */
+  const fullDenied = [...new Set([...S.denied, ...newDenied])];
+
+  try{
+    const res = await fetch('/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        choice:  sym,
+        matched: S.matched,    // carry ALL accumulated symptoms
+        denied:  fullDenied    // carry ALL denied symptoms
+      })
+    });
+    const data = await res.json();
+    /* ── Update state from server response ── */
+    S = { matched: data.matched, denied: data.denied };
+    updateSympBar(S.matched);
     await delay(850);
-    await render(data.response,null);
-  }catch(e){hideTyping();setLoading(false);console.error(e);}
+    await render(data.response, null, false);
+  } catch(e){
+    hideTyping(); setLoad(false); console.error(e);
+  }
 }
 
 /* ── Starter chips ── */
-function useChip(text){msgEl.value=text;msgEl.focus();}
+function useChip(text){ msgEl.value=text; msgEl.focus(); }
 </script>
 </body>
 </html>"""
